@@ -119,19 +119,18 @@ export function setupAuth(app: Express) {
         firstName, 
         lastName, 
         email, 
-        role, 
-        tenantId,
         mobileNumber,
         gender,
         dateOfBirth,
         educationLevel,
         schoolCollege,
-        yearOfStudy
+        yearOfStudy,
+        role, 
+        tenantId
       } = req.body;
       
       // Check for required fields
-      if (!username || !password || !firstName || !lastName || !email || 
-          !mobileNumber || !dateOfBirth || !educationLevel || !schoolCollege || !yearOfStudy) {
+      if (!username || !password) {
         return res.status(400).send("Missing required fields");
       }
       
@@ -157,13 +156,6 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Invalid tenant ID");
       }
 
-      // Get profile photo path if uploaded
-      let profilePhotoPath = null;
-      if (req.file) {
-        // Store relative path from uploads directory
-        profilePhotoPath = `profiles/${req.file.filename}`;
-      }
-
       const user = await storage.createUser({
         username,
         password: await hashPassword(password),
@@ -173,7 +165,6 @@ export function setupAuth(app: Express) {
         mobileNumber,
         gender,
         dateOfBirth,
-        profilePhoto: profilePhotoPath,
         educationLevel,
         schoolCollege,
         yearOfStudy,

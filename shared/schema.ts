@@ -22,18 +22,18 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  firstName: text("first_name").notNull(),
-  lastName: text("last_name").notNull(),
-  email: text("email").notNull(),
-  mobileNumber: text("mobile_number").notNull(),
+  email: text("email"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  mobileNumber: text("mobile_number"),
   gender: text("gender"),
-  dateOfBirth: text("date_of_birth").notNull(),
-  profilePhoto: text("profile_photo"),
-  educationLevel: text("education_level").notNull(),
-  schoolCollege: text("school_college").notNull(),
-  yearOfStudy: text("year_of_study").notNull(),
-  role: text("role").notNull().default("student"),
+  dateOfBirth: text("date_of_birth"),
+  educationLevel: text("education_level"),
+  schoolCollege: text("school_college"),
+  yearOfStudy: text("year_of_study"),
+  role: text("role").default("student"),
   tenantId: integer("tenant_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -45,15 +45,11 @@ export const insertUserSchema = createInsertSchema(users).pick({
   mobileNumber: true,
   gender: true,
   dateOfBirth: true,
-  profilePhoto: true,
   educationLevel: true,
   schoolCollege: true,
   yearOfStudy: true,
   role: true,
   tenantId: true,
-}).extend({
-  // Make profilePhoto field accept both string and null
-  profilePhoto: z.string().nullable().optional(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -73,22 +69,12 @@ export const courses = pgTable("courses", {
   instructorId: integer("instructor_id"), // Instructor ID if already in system
   isEnrollmentRequired: boolean("is_enrollment_required").default(true), // Free or enrollment required
   tenantId: integer("tenant_id").notNull(),
-  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertCourseSchema = createInsertSchema(courses).pick({
-  title: true,
-  description: true,
-  category: true,
-  difficulty: true,
-  duration: true,
-  moduleCount: true,
-  lessonCount: true,
-  thumbnail: true,
-  instructorId: true,
-  isEnrollmentRequired: true,
-  tenantId: true,
-  createdBy: true,
+export const insertCourseSchema = createInsertSchema(courses).omit({
+  id: true,
+  createdAt: true,
 }).extend({
   // Make these fields optional or nullable
   moduleCount: z.number().optional(),
@@ -248,18 +234,18 @@ export const activityLogs = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   activityType: text("activity_type").notNull(), // course_view, lesson_complete, exam_start, etc.
-  resourceId: integer("resource_id").notNull(), // ID of the resource being accessed
-  resourceType: text("resource_type").notNull(), // course, lesson, exam
-  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  details: jsonb("details"), // JSON details about the activity
   tenantId: integer("tenant_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertActivityLogSchema = createInsertSchema(activityLogs).pick({
   userId: true,
   activityType: true,
-  resourceId: true,
-  resourceType: true,
+  details: true,
   tenantId: true,
+}).extend({
+  details: z.any().nullable().optional(),
 });
 
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;

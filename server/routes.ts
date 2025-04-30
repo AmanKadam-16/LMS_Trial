@@ -46,6 +46,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(403).json({ message: "Forbidden: Super Admin access required" });
   };
 
+  // Admin route for recalculating progress
+  app.post("/api/admin/recalculate-progress", isAdmin, async (req, res) => {
+    try {
+      const { courseId, userId } = req.body;
+      const updates = [];
+      
+      // If specific userId and courseId provided, update just that one
+      if (userId && courseId) {
+        const progress = await storage.updateCourseProgress(userId, courseId);
+        updates.push({ userId, courseId, progress });
+      }
+      // If only courseId provided, update for all users in that course
+      else if (courseId) {
+        const enrollments = await storage.getEnrollmentsByCourse(courseId);
+        for (const enrollment of enrollments) {
+          const progress = await storage.updateCourseProgress(enrollment.userId, courseId);
+          updates.push({ userId: enrollment.userId, courseId, progress });
+        }
+      }
+      // If only userId provided, update for all courses of that user
+      else if (userId) {
+        const enrollments = await storage.getEnrollmentsByUser(userId);
+        for (const enrollment of enrollments) {
+          const progress = await storage.updateCourseProgress(userId, enrollment.courseId);
+          updates.push({ userId, courseId: enrollment.courseId, progress });
+        }
+      }
+      // If neither provided, update all enrollments
+      else {
+        // Get all enrollments from the tenant
+        const users = await storage.getUsersByTenant(req.user.tenantId);
+        
+        for (const user of users) {
+          const enrollments = await storage.getEnrollmentsByUser(user.id);
+          for (const enrollment of enrollments) {
+            const progress = await storage.updateCourseProgress(user.id, enrollment.courseId);
+            updates.push({ userId: user.id, courseId: enrollment.courseId, progress });
+          }
+        }
+      }
+      
+      res.json({ 
+        updatedCount: updates.length,
+        updates: updates,
+        message: "Progress recalculated successfully" 
+      });
+    } catch (error) {
+      console.error("Error recalculating progress:", error);
+      res.status(500).json({ message: "Failed to recalculate progress" });
+    }
+  });
+  
+  // Test route for recalculating progress (for development)
+  app.get("/api/test/recalculate-progress/:userId/:courseId", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const courseId = parseInt(req.params.courseId);
+      
+      // Force recalculate progress
+      const progress = await storage.updateCourseProgress(userId, courseId);
+      
+      res.json({ 
+        userId, 
+        courseId, 
+        progress,
+        message: "Progress recalculated successfully" 
+      });
+    } catch (error) {
+      console.error("Error recalculating progress:", error);
+      res.status(500).json({ message: "Failed to recalculate progress" });
+    }
+  });
+
   // Tenant routes
   app.get("/api/tenants", isAuthenticated, async (req, res) => {
     try {
@@ -197,6 +270,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(course);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch course" });
+    }
+  });
+  
+  // Get course progress details for admins
+  app.get("/api/admin/course-progress/:courseId", isAdmin, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.courseId);
+      
+      // Validate course exists and belongs to the tenant
+      const course = await storage.getCourse(courseId);
+      if (!course) {
+        return res.status(404).json({ message: "Course not found" });
+      }
+      
+      if (course.tenantId !== req.user.tenantId) {
+        return res.status(403).json({ message: "Access denied to this course" });
+      }
+      
+      // Get all enrollments for this course
+      const enrollments = await storage.getEnrollmentsByCourse(courseId);
+      
+      // Get detailed progress information
+      const progressDetails = [];
+      
+      for (const enrollment of enrollments) {
+        const userId = enrollment.userId;
+        const user = await storage.getUser(userId);
+        
+        if (!user) continue; // Skip if user not found
+        
+        // Calculate progress details
+        const lessonProgress = await storage.getLessonProgressByCourse(userId, courseId);
+        const modules = await storage.getModulesByCourse(courseId);
+        
+        // Count lessons by module
+        const moduleProgress = [];
+        let totalLessons = 0;
+        let totalCompleted = 0;
+        
+        for (const module of modules) {
+          const moduleLessons = await storage.getLessonsByModule(module.id);
+          const moduleLessonIds = moduleLessons.map(lesson => lesson.id);
+          
+          const completedModuleLessons = lessonProgress.filter(
+            progress => moduleLessonIds.includes(progress.lessonId) && progress.completed
+          );
+          
+          totalLessons += moduleLessons.length;
+          totalCompleted += completedModuleLessons.length;
+          
+          moduleProgress.push({
+            moduleId: module.id,
+            moduleName: module.title,
+            totalLessons: moduleLessons.length,
+            completedLessons: completedModuleLessons.length,
+            progress: moduleLessons.length > 0 
+              ? Math.round((completedModuleLessons.length / moduleLessons.length) * 100) 
+              : 0
+          });
+        }
+        
+        // Add user progress details
+        progressDetails.push({
+          userId: user.id,
+          username: user.username,
+          name: user.name,
+          email: user.email,
+          enrolledAt: enrollment.enrolledAt,
+          completedAt: enrollment.completedAt,
+          overallProgress: enrollment.progress,
+          calculatedProgress: totalLessons > 0 ? Math.round((totalCompleted / totalLessons) * 100) : 0,
+          moduleProgress
+        });
+      }
+      
+      res.json({
+        courseId,
+        courseTitle: course.title,
+        enrollmentsCount: enrollments.length,
+        progressDetails
+      });
+      
+    } catch (error) {
+      console.error("Error fetching course progress:", error);
+      res.status(500).json({ message: "Failed to fetch course progress" });
     }
   });
 

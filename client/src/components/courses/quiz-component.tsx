@@ -49,6 +49,7 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
 
   // Handle option selection
   const handleOptionSelect = (optionId: number) => {
+    if (optionId === undefined) return;
     const newSelectedOptions = [...selectedOptions];
     newSelectedOptions[currentQuestionIndex] = optionId;
     setSelectedOptions(newSelectedOptions);
@@ -56,6 +57,7 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
 
   // Check if an option is selected
   const isOptionSelected = (optionId: number) => {
+    if (optionId === undefined) return false;
     return selectedOptions[currentQuestionIndex] === optionId;
   };
 
@@ -75,8 +77,12 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
       // All questions answered, calculate score
       let correctAnswers = 0;
       questions.forEach((question, index) => {
+        if (!question || !question.options) return;
+        
         const selectedOptionId = selectedOptions[index];
-        const selectedOption = question.options.find(opt => opt.id === selectedOptionId);
+        if (selectedOptionId === undefined || selectedOptionId === -1) return;
+        
+        const selectedOption = question.options.find(opt => opt && opt.id === selectedOptionId);
         if (selectedOption?.isCorrect) {
           correctAnswers++;
         }
@@ -105,9 +111,13 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
   // Get the result for a specific question
   const getQuestionResult = (questionIndex: number) => {
     const question = questions[questionIndex];
+    if (!question || !question.options) return false;
+    
     const selectedOptionId = selectedOptions[questionIndex];
-    const selectedOption = question.options.find(opt => opt.id === selectedOptionId);
-    return selectedOption?.isCorrect;
+    if (selectedOptionId === undefined || selectedOptionId === -1) return false;
+    
+    const selectedOption = question.options.find(opt => opt && opt.id === selectedOptionId);
+    return selectedOption?.isCorrect || false;
   };
 
   // Handle quiz retry
@@ -147,7 +157,7 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
           
           <CardContent>
             <RadioGroup value={selectedOptions[currentQuestionIndex]?.toString()} className="space-y-3">
-              {currentQuestion.options.map((option) => (
+              {currentQuestion.options?.map((option) => option && (
                 <div 
                   key={option.id} 
                   className={cn(
@@ -157,15 +167,15 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
                   onClick={() => handleOptionSelect(option.id)}
                 >
                   <RadioGroupItem 
-                    value={option.id.toString()} 
-                    id={`option-${option.id}`} 
+                    value={option.id?.toString() || ''} 
+                    id={`option-${option.id || 'unknown'}`} 
                     checked={isOptionSelected(option.id)}
                   />
                   <Label 
-                    htmlFor={`option-${option.id}`} 
+                    htmlFor={`option-${option.id || 'unknown'}`} 
                     className="flex-grow cursor-pointer"
                   >
-                    {option.text}
+                    {option.text || 'No option text'}
                   </Label>
                 </div>
               ))}
@@ -226,7 +236,7 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
                   const isCorrect = getQuestionResult(index);
                   return (
                     <div 
-                      key={question.id} 
+                      key={question.id || index} 
                       className={cn(
                         "p-3 rounded-md border",
                         isCorrect ? "bg-green-50 border-green-100" : "bg-red-50 border-red-100"
@@ -243,7 +253,7 @@ export default function QuizComponent({ quizData, onComplete }: QuizComponentPro
                           <p className="font-medium">{question.text}</p>
                           <div className="mt-1 text-sm">
                             <p className="text-gray-500">Your answer: {
-                              question.options.find(o => o.id === selectedOptions[index])?.text || "Not answered"
+                              question.options?.find(o => o && o.id === selectedOptions[index])?.text || "Not answered"
                             }</p>
                           </div>
                         </div>
