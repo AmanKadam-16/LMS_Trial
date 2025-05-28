@@ -46,79 +46,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(403).json({ message: "Forbidden: Super Admin access required" });
   };
 
-  // Admin route for recalculating progress
-  app.post("/api/admin/recalculate-progress", isAdmin, async (req, res) => {
-    try {
-      const { courseId, userId } = req.body;
-      const updates = [];
-      
-      // If specific userId and courseId provided, update just that one
-      if (userId && courseId) {
-        const progress = await storage.updateCourseProgress(userId, courseId);
-        updates.push({ userId, courseId, progress });
-      }
-      // If only courseId provided, update for all users in that course
-      else if (courseId) {
-        const enrollments = await storage.getEnrollmentsByCourse(courseId);
-        for (const enrollment of enrollments) {
-          const progress = await storage.updateCourseProgress(enrollment.userId, courseId);
-          updates.push({ userId: enrollment.userId, courseId, progress });
-        }
-      }
-      // If only userId provided, update for all courses of that user
-      else if (userId) {
-        const enrollments = await storage.getEnrollmentsByUser(userId);
-        for (const enrollment of enrollments) {
-          const progress = await storage.updateCourseProgress(userId, enrollment.courseId);
-          updates.push({ userId, courseId: enrollment.courseId, progress });
-        }
-      }
-      // If neither provided, update all enrollments
-      else {
-        // Get all enrollments from the tenant
-        const users = await storage.getUsersByTenant(req.user.tenantId);
-        
-        for (const user of users) {
-          const enrollments = await storage.getEnrollmentsByUser(user.id);
-          for (const enrollment of enrollments) {
-            const progress = await storage.updateCourseProgress(user.id, enrollment.courseId);
-            updates.push({ userId: user.id, courseId: enrollment.courseId, progress });
-          }
-        }
-      }
-      
-      res.json({ 
-        updatedCount: updates.length,
-        updates: updates,
-        message: "Progress recalculated successfully" 
-      });
-    } catch (error) {
-      console.error("Error recalculating progress:", error);
-      res.status(500).json({ message: "Failed to recalculate progress" });
-    }
-  });
-  
-  // Test route for recalculating progress (for development)
-  app.get("/api/test/recalculate-progress/:userId/:courseId", async (req, res) => {
-    try {
-      const userId = parseInt(req.params.userId);
-      const courseId = parseInt(req.params.courseId);
-      
-      // Force recalculate progress
-      const progress = await storage.updateCourseProgress(userId, courseId);
-      
-      res.json({ 
-        userId, 
-        courseId, 
-        progress,
-        message: "Progress recalculated successfully" 
-      });
-    } catch (error) {
-      console.error("Error recalculating progress:", error);
-      res.status(500).json({ message: "Failed to recalculate progress" });
-    }
-  });
-
   // Tenant routes
   app.get("/api/tenants", isAuthenticated, async (req, res) => {
     try {
@@ -270,91 +197,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(course);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch course" });
-    }
-  });
-  
-  // Get course progress details for admins
-  app.get("/api/admin/course-progress/:courseId", isAdmin, async (req, res) => {
-    try {
-      const courseId = parseInt(req.params.courseId);
-      
-      // Validate course exists and belongs to the tenant
-      const course = await storage.getCourse(courseId);
-      if (!course) {
-        return res.status(404).json({ message: "Course not found" });
-      }
-      
-      if (course.tenantId !== req.user.tenantId) {
-        return res.status(403).json({ message: "Access denied to this course" });
-      }
-      
-      // Get all enrollments for this course
-      const enrollments = await storage.getEnrollmentsByCourse(courseId);
-      
-      // Get detailed progress information
-      const progressDetails = [];
-      
-      for (const enrollment of enrollments) {
-        const userId = enrollment.userId;
-        const user = await storage.getUser(userId);
-        
-        if (!user) continue; // Skip if user not found
-        
-        // Calculate progress details
-        const lessonProgress = await storage.getLessonProgressByCourse(userId, courseId);
-        const modules = await storage.getModulesByCourse(courseId);
-        
-        // Count lessons by module
-        const moduleProgress = [];
-        let totalLessons = 0;
-        let totalCompleted = 0;
-        
-        for (const module of modules) {
-          const moduleLessons = await storage.getLessonsByModule(module.id);
-          const moduleLessonIds = moduleLessons.map(lesson => lesson.id);
-          
-          const completedModuleLessons = lessonProgress.filter(
-            progress => moduleLessonIds.includes(progress.lessonId) && progress.completed
-          );
-          
-          totalLessons += moduleLessons.length;
-          totalCompleted += completedModuleLessons.length;
-          
-          moduleProgress.push({
-            moduleId: module.id,
-            moduleName: module.title,
-            totalLessons: moduleLessons.length,
-            completedLessons: completedModuleLessons.length,
-            progress: moduleLessons.length > 0 
-              ? Math.round((completedModuleLessons.length / moduleLessons.length) * 100) 
-              : 0
-          });
-        }
-        
-        // Add user progress details
-        progressDetails.push({
-          userId: user.id,
-          username: user.username,
-          name: user.name,
-          email: user.email,
-          enrolledAt: enrollment.enrolledAt,
-          completedAt: enrollment.completedAt,
-          overallProgress: enrollment.progress,
-          calculatedProgress: totalLessons > 0 ? Math.round((totalCompleted / totalLessons) * 100) : 0,
-          moduleProgress
-        });
-      }
-      
-      res.json({
-        courseId,
-        courseTitle: course.title,
-        enrollmentsCount: enrollments.length,
-        progressDetails
-      });
-      
-    } catch (error) {
-      console.error("Error fetching course progress:", error);
-      res.status(500).json({ message: "Failed to fetch course progress" });
     }
   });
 
@@ -876,6 +718,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxAttempts: z.number().min(1).optional(),
         startTime: z.string().transform(str => new Date(str)).optional(),
         endTime: z.string().transform(str => new Date(str)).optional(),
+        acceptingResponses: z.boolean().optional(),
       });
       
       const validatedData = updateSchema.parse(req.body);
@@ -992,7 +835,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const questionData = {
         ...req.body,
         examId,
-        order: req.body.order !== undefined ? req.body.order : nextOrder
+        order: req.body.order !== undefined ? req.body.order : nextOrder,
+        // Provide default values for legacy columns that are now optional
+        options: req.body.options || null,
+        correctOption: req.body.correctOption || null
       };
       
       const validatedData = insertQuestionSchema.parse(questionData);
@@ -1146,6 +992,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied to this exam" });
       }
       
+      // Check if exam is accepting responses
+      if (exam.acceptingResponses === false) {
+        return res.status(403).json({ message: "This exam is not accepting responses at this time" });
+      }
+      
       // Check if user has already reached max attempts
       const existingAttempts = await storage.getExamAttemptsByUser(req.user.id);
       const attemptsForThisExam = existingAttempts.filter(a => a.examId === validatedData.examId);
@@ -1188,25 +1039,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied to this exam attempt" });
       }
       
-      // If completing the exam, calculate score
+      // For assignment-style exams, we don't automatically score - instructor will review
       if (req.body.completedAt && req.body.answers) {
         const exam = await storage.getExam(attempt.examId);
         const questions = await storage.getQuestionsByExam(attempt.examId);
         
-        const answers = req.body.answers;
-        let score = 0;
+        // Check if exam is still accepting responses
+        if (exam.acceptingResponses === false) {
+          return res.status(403).json({ message: "This exam is no longer accepting responses" });
+        }
         
-        for (const question of questions) {
-          const userAnswer = answers[question.id];
-          if (userAnswer === question.correctOption) {
-            score++;
+        // Fix the completedAt timestamp - convert string to Date object
+        if (typeof req.body.completedAt === 'string') {
+          req.body.completedAt = new Date(req.body.completedAt);
+        }
+        
+        // Handle answers as JSON string or object
+        if (typeof req.body.answers === 'string') {
+          try {
+            req.body.answers = JSON.parse(req.body.answers);
+          } catch (e) {
+            console.error("Error parsing answers JSON:", e);
           }
         }
         
-        // Calculate percentage score
-        const percentageScore = Math.round((score / questions.length) * 100);
-        
-        req.body.score = percentageScore;
+        // Store the answers but don't calculate a score - will be reviewed by instructor
+        // Set a null score to indicate it needs review
+        req.body.score = null;
         
         // Create activity log
         await storage.createActivityLog({
@@ -1221,6 +1080,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedAttempt = await storage.updateExamAttempt(attemptId, req.body);
       res.json(updatedAttempt);
     } catch (error) {
+      console.error("Failed to update exam attempt:", error);
       res.status(500).json({ message: "Failed to update exam attempt" });
     }
   });
@@ -1768,6 +1628,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Image generation endpoint
   app.post("/api/ai/generate-image", isAuthenticated, generateImage);
+
+  // Admin grading endpoints
+  app.get("/api/admin/exam-attempts", isAdmin, async (req, res) => {
+    try {
+      const attempts = await storage.getAllExamAttemptsForAdmin(req.user.tenantId);
+      res.json(attempts);
+    } catch (error) {
+      console.error("Failed to fetch exam attempts for admin:", error);
+      res.status(500).json({ message: "Failed to fetch exam attempts" });
+    }
+  });
+
+  app.put("/api/admin/exam-attempts/:id/grade", isAdmin, async (req, res) => {
+    try {
+      const attemptId = parseInt(req.params.id);
+      const { feedback } = req.body;
+
+      const attempt = await storage.gradeExamAttempt(attemptId, feedback, req.user.tenantId);
+      res.json(attempt);
+    } catch (error) {
+      console.error("Failed to grade exam attempt:", error);
+      res.status(500).json({ message: "Failed to save grading" });
+    }
+  });
+
+  // Student results endpoint
+  app.get("/api/student/exam-results", isAuthenticated, async (req, res) => {
+    try {
+      const results = await storage.getStudentExamResults(req.user.id);
+      res.json(results);
+    } catch (error) {
+      console.error("Failed to fetch student exam results:", error);
+      res.status(500).json({ message: "Failed to fetch exam results" });
+    }
+  });
   
   // Initialize the HTTP server
   const httpServer = createServer(app);

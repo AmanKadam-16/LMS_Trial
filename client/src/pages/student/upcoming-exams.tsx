@@ -55,80 +55,32 @@ export default function StudentUpcomingExams() {
   
   // Determine if an exam can be taken
   const canTakeExam = (exam: any) => {
-    // Check if current time is between start and end time
-    const now = new Date();
-    const startTime = exam.startTime ? new Date(exam.startTime) : null;
-    const endTime = exam.endTime ? new Date(exam.endTime) : null;
-    
-    // If no start or end time, exam can't be taken yet
-    if (!startTime) return false;
-    
-    // If there's a start time but no end time, exam can be taken after start time
-    if (startTime && !endTime) {
-      return isAfter(now, startTime);
-    }
-    
-    // If there's both start and end time, exam can be taken between them
-    if (startTime && endTime) {
-      return isAfter(now, startTime) && isBefore(now, endTime);
-    }
-    
-    return false;
+    // Only check if exam is accepting responses
+    // Students can take multiple attempts as long as admin allows responses
+    return exam.acceptingResponses !== false;
   };
   
   // Get exam status and color
   const getExamStatus = (exam: any) => {
-    const now = new Date();
-    const startTime = exam.startTime ? new Date(exam.startTime) : null;
-    const endTime = exam.endTime ? new Date(exam.endTime) : null;
-    
     // Get attempts for this exam
     const attemptsForExam = (examAttempts as any[]).filter((attempt) => attempt.examId === exam.id);
     const hasCompletedAttempt = attemptsForExam.some((attempt) => attempt.completedAt);
-    const attemptsCount = attemptsForExam.length;
     
-    // If the exam has been completed
-    if (hasCompletedAttempt) {
+    // Check if exam is not accepting responses
+    if (exam.acceptingResponses === false) {
       return {
-        label: "Completed",
-        color: "bg-green-100 text-green-800",
-        icon: <CheckCircle2 className="h-4 w-4 mr-1" />
-      };
-    }
-    
-    // If max attempts reached
-    if (attemptsCount >= exam.maxAttempts) {
-      return {
-        label: "Max Attempts Reached",
+        label: "Not Accepting Responses",
         color: "bg-red-100 text-red-800",
         icon: <XCircle className="h-4 w-4 mr-1" />
       };
     }
     
-    // If no start time set
-    if (!startTime) {
+    // If the exam has been completed but is still accepting responses
+    if (hasCompletedAttempt) {
       return {
-        label: "Not Scheduled",
-        color: "bg-gray-100 text-gray-800",
-        icon: <Clock className="h-4 w-4 mr-1" />
-      };
-    }
-    
-    // If not yet started
-    if (isBefore(now, startTime)) {
-      return {
-        label: "Upcoming",
+        label: "Available for Retake",
         color: "bg-blue-100 text-blue-800",
-        icon: <CalendarClock className="h-4 w-4 mr-1" />
-      };
-    }
-    
-    // If past end time
-    if (endTime && isAfter(now, endTime)) {
-      return {
-        label: "Missed",
-        color: "bg-amber-100 text-amber-800",
-        icon: <AlertTriangle className="h-4 w-4 mr-1" />
+        icon: <CheckCircle2 className="h-4 w-4 mr-1" />
       };
     }
     
@@ -140,11 +92,7 @@ export default function StudentUpcomingExams() {
     };
   };
   
-  // Format date for display
-  const formatExamDate = (dateString?: string) => {
-    if (!dateString) return "Not scheduled";
-    return format(new Date(dateString), "MMM d, yyyy h:mm a");
-  };
+
   
   // Handle starting an exam
   const handleStartExam = (exam: any) => {
@@ -251,28 +199,9 @@ export default function StudentUpcomingExams() {
                   <CardContent className="pb-6 flex justify-between items-center">
                     <div className="space-y-1">
                       <div className="flex items-center text-sm text-gray-500">
-                        <Clock className="h-4 w-4 mr-1" />
-                        <span>{exam.duration} minutes</span>
-                        <span className="mx-2">•</span>
-                        <span>Attempts: {(examAttempts as any[]).filter((a) => a.examId === exam.id).length} / {exam.maxAttempts}</span>
+                        <Book className="h-4 w-4 mr-1" />
+                        <span>{exam.description}</span>
                       </div>
-                      
-                      <div className="flex items-center text-sm text-gray-500">
-                        <CalendarClock className="h-4 w-4 mr-1" />
-                        <span>
-                          {exam.startTime ? (
-                            <>Start: {formatExamDate(exam.startTime)}</>
-                          ) : (
-                            "Not scheduled yet"
-                          )}
-                        </span>
-                      </div>
-                      
-                      {exam.endTime && (
-                        <div className="flex items-center text-sm text-gray-500 ml-5">
-                          <span>End: {formatExamDate(exam.endTime)}</span>
-                        </div>
-                      )}
                     </div>
                     
                     <Button 

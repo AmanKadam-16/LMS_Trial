@@ -22,18 +22,18 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  email: text("email"),
-  firstName: text("first_name"),
-  lastName: text("last_name"),
-  mobileNumber: text("mobile_number"),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email").notNull(),
+  mobileNumber: text("mobile_number").notNull(),
   gender: text("gender"),
-  dateOfBirth: text("date_of_birth"),
-  educationLevel: text("education_level"),
-  schoolCollege: text("school_college"),
-  yearOfStudy: text("year_of_study"),
-  role: text("role").default("student"),
+  dateOfBirth: text("date_of_birth").notNull(),
+  profilePhoto: text("profile_photo"),
+  educationLevel: text("education_level").notNull(),
+  schoolCollege: text("school_college").notNull(),
+  yearOfStudy: text("year_of_study").notNull(),
+  role: text("role").notNull().default("student"),
   tenantId: integer("tenant_id").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -45,11 +45,15 @@ export const insertUserSchema = createInsertSchema(users).pick({
   mobileNumber: true,
   gender: true,
   dateOfBirth: true,
+  profilePhoto: true,
   educationLevel: true,
   schoolCollege: true,
   yearOfStudy: true,
   role: true,
   tenantId: true,
+}).extend({
+  // Make profilePhoto field accept both string and null
+  profilePhoto: z.string().nullable().optional(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -69,12 +73,22 @@ export const courses = pgTable("courses", {
   instructorId: integer("instructor_id"), // Instructor ID if already in system
   isEnrollmentRequired: boolean("is_enrollment_required").default(true), // Free or enrollment required
   tenantId: integer("tenant_id").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: integer("created_by").notNull(),
 });
 
-export const insertCourseSchema = createInsertSchema(courses).omit({
-  id: true,
-  createdAt: true,
+export const insertCourseSchema = createInsertSchema(courses).pick({
+  title: true,
+  description: true,
+  category: true,
+  difficulty: true,
+  duration: true,
+  moduleCount: true,
+  lessonCount: true,
+  thumbnail: true,
+  instructorId: true,
+  isEnrollmentRequired: true,
+  tenantId: true,
+  createdBy: true,
 }).extend({
   // Make these fields optional or nullable
   moduleCount: z.number().optional(),
@@ -161,12 +175,9 @@ export const exams = pgTable("exams", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   courseId: integer("course_id").notNull(),
-  duration: integer("duration").notNull(), // in minutes
-  startTime: timestamp("start_time"),
-  endTime: timestamp("end_time"),
-  maxAttempts: integer("max_attempts").notNull().default(1),
   tenantId: integer("tenant_id").notNull(),
   createdBy: integer("created_by").notNull(),
+  acceptingResponses: boolean("accepting_responses").default(true), // Toggle for accepting responses
 });
 
 export const insertExamSchema = createInsertSchema(exams)
@@ -174,51 +185,40 @@ export const insertExamSchema = createInsertSchema(exams)
     title: true,
     description: true,
     courseId: true,
-    duration: true,
-    startTime: true,
-    endTime: true,
-    maxAttempts: true,
     tenantId: true,
     createdBy: true,
-  })
-  .extend({
-    startTime: z.string().transform(str => new Date(str)),
-    endTime: z.string().transform(str => new Date(str)),
   });
 
 export type InsertExam = z.infer<typeof insertExamSchema>;
 export type Exam = typeof exams.$inferSelect;
 
-// Question model
+// Question model - Updated for text-based assignment questions
 export const questions = pgTable("questions", {
   id: serial("id").primaryKey(),
   examId: integer("exam_id").notNull(),
-  text: text("text").notNull(),
-  options: jsonb("options").notNull(), // Array of options
-  correctOption: integer("correct_option").notNull(),
+  text: text("text").notNull(), // Question text
   order: integer("order").notNull(),
 });
 
 export const insertQuestionSchema = createInsertSchema(questions).pick({
   examId: true,
   text: true,
-  options: true,
-  correctOption: true,
   order: true,
 });
 
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
 export type Question = typeof questions.$inferSelect;
 
-// Exam attempt model
+// Exam attempt model - Updated for text-based answers
 export const examAttempts = pgTable("exam_attempts", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   examId: integer("exam_id").notNull(),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
-  score: integer("score"),
-  answers: jsonb("answers"), // User's answers
+  answers: jsonb("answers"), // User's text answers (JSON object with question ID as key and text answer as value)
+  feedback: text("feedback"), // Instructor feedback on the answers
+  reviewedAt: timestamp("reviewed_at"), // When the instructor reviewed the answers
 });
 
 export const insertExamAttemptSchema = createInsertSchema(examAttempts).pick({
@@ -234,18 +234,18 @@ export const activityLogs = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   activityType: text("activity_type").notNull(), // course_view, lesson_complete, exam_start, etc.
-  details: jsonb("details"), // JSON details about the activity
+  resourceId: integer("resource_id").notNull(), // ID of the resource being accessed
+  resourceType: text("resource_type").notNull(), // course, lesson, exam
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
   tenantId: integer("tenant_id").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertActivityLogSchema = createInsertSchema(activityLogs).pick({
   userId: true,
   activityType: true,
-  details: true,
+  resourceId: true,
+  resourceType: true,
   tenantId: true,
-}).extend({
-  details: z.any().nullable().optional(),
 });
 
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;

@@ -14,8 +14,20 @@ import {
   Calendar, 
   BarChart2, 
   Award,
-  ChevronRight
+  ChevronRight,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Eye
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { apiRequest } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -34,9 +46,18 @@ import {
   Cell
 } from "recharts";
 
+type Question = {
+  id: number;
+  text: string;
+  order: number;
+  examId: number;
+};
+
 export default function StudentResults() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("exams");
+  const [selectedAttempt, setSelectedAttempt] = useState<any>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   
   // Fetch exam attempts
   const { data: examAttempts = [], isLoading: isLoadingAttempts } = useQuery({
@@ -56,6 +77,17 @@ export default function StudentResults() {
   // Fetch enrollments
   const { data: enrollments = [] } = useQuery({
     queryKey: ["/api/enrollments/user"],
+  });
+
+  // Fetch questions for the selected exam
+  const { data: questions } = useQuery({
+    queryKey: [`/api/exams/${selectedAttempt?.examId}/questions`],
+    queryFn: async () => {
+      if (!selectedAttempt?.examId) return [];
+      const response = await apiRequest('GET', `/api/exams/${selectedAttempt.examId}/questions`);
+      return await response.json();
+    },
+    enabled: !!selectedAttempt?.examId,
   });
   
   // Find exam by ID
@@ -83,6 +115,12 @@ export default function StudentResults() {
     return exam.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (course && course.title.toLowerCase().includes(searchTerm.toLowerCase()));
   });
+
+  // Open detail dialog for viewing exam feedback
+  const openDetail = (attempt: any) => {
+    setSelectedAttempt(attempt);
+    setIsDetailOpen(true);
+  };
   
   // Sort attempts by date (most recent first)
   const sortedAttempts = [...filteredAttempts].sort((a, b) => 
@@ -308,9 +346,10 @@ export default function StudentResults() {
                           size="sm" 
                           className="gap-1"
                           disabled={!isCompleted}
+                          onClick={() => openDetail(attempt)}
                         >
+                          <Eye className="h-4 w-4 mr-1" />
                           View Details
-                          <ChevronRight className="h-4 w-4" />
                         </Button>
                       </CardContent>
                     </Card>
@@ -480,6 +519,103 @@ export default function StudentResults() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Exam Details Dialog */}
+        <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                Exam Results: {selectedAttempt && getExamById(selectedAttempt.examId)?.title}
+              </DialogTitle>
+              <div className="text-sm text-gray-500">
+                Submitted on {selectedAttempt?.completedAt ? 
+                  format(new Date(selectedAttempt.completedAt), "MMM d, yyyy h:mm a") : 'Not completed'
+                }
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-6">
+              {/* Exam Status */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {selectedAttempt?.reviewedAt && selectedAttempt?.feedback ? (
+                    <Badge className="bg-green-100 text-green-800">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Graded
+                    </Badge>
+                  ) : selectedAttempt?.completedAt ? (
+                    <Badge className="bg-blue-100 text-blue-800">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Pending Review
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-yellow-100 text-yellow-800">
+                      <Clock className="h-3 w-3 mr-1" />
+                      In Progress
+                    </Badge>
+                  )}
+                </div>
+                {selectedAttempt?.completedAt && (
+                  <div className="text-sm text-gray-500">
+                    Duration: {getExamById(selectedAttempt.examId)?.duration} minutes
+                  </div>
+                )}
+              </div>
+
+              {/* Questions and Answers */}
+              <div>
+                <h3 className="text-lg font-medium mb-4">Your Answers</h3>
+                <div className="space-y-4">
+                  {questions?.map((question: Question, index: number) => (
+                    <div key={question.id} className="border rounded-lg p-4">
+                      <h4 className="font-medium mb-2">Question {index + 1}</h4>
+                      <p className="text-gray-700 mb-3">{question.text}</p>
+                      <div className="bg-blue-50 rounded p-3">
+                        <Label className="text-sm font-medium text-blue-600">Your Answer:</Label>
+                        <p className="mt-1 text-gray-900">
+                          {selectedAttempt?.answers?.[question.id] || 'No answer provided'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Instructor Feedback */}
+              {selectedAttempt?.feedback && (
+                <div>
+                  <h3 className="text-lg font-medium mb-3">Instructor Feedback</h3>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p className="text-gray-900 whitespace-pre-wrap">{selectedAttempt.feedback}</p>
+                    {selectedAttempt.reviewedAt && (
+                      <div className="mt-3 text-sm text-green-600">
+                        Reviewed on {format(new Date(selectedAttempt.reviewedAt), "MMM d, yyyy h:mm a")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* No feedback yet */}
+              {selectedAttempt?.completedAt && !selectedAttempt?.feedback && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
+                    <p className="text-yellow-800">
+                      Your exam is being reviewed. Feedback will be available soon.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

@@ -19,6 +19,7 @@ import {
   Menu,
   Bot,
   UsersRound,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -110,6 +111,13 @@ export default function Sidebar() {
             isActive={location === "/admin/exams"}
           >
             Exams
+          </SidebarLink>
+          <SidebarLink
+            href="/admin/grading"
+            icon={<GraduationCap className="h-5 w-5" />}
+            isActive={location === "/admin/grading"}
+          >
+            Grading
           </SidebarLink>
           <SidebarLink
             href="/admin/students"

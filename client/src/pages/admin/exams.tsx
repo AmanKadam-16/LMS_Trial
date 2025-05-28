@@ -241,15 +241,14 @@ export default function AdminExams() {
                 <CardContent className="flex justify-between items-center">
                   <div className="space-y-1">
                     <div className="flex items-center text-sm text-gray-500">
-                      <Clock className="h-4 w-4 mr-1" />
-                      <span>{exam.duration} minutes</span>
-                      <span className="mx-2">•</span>
-                      <span>Max Attempts: {exam.maxAttempts}</span>
+                      <ClipboardList className="h-4 w-4 mr-1" />
+                      <span>{exam.description}</span>
                     </div>
                     
                     <div className="flex items-center text-sm text-gray-500">
-                      <Calendar className="h-4 w-4 mr-1" />
-                      <span>{formatDate(exam.startTime)}</span>
+                      <span className={`px-2 py-1 rounded-full text-xs ${exam.acceptingResponses ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {exam.acceptingResponses ? 'Open for Students' : 'Closed'}
+                      </span>
                     </div>
                   </div>
                   

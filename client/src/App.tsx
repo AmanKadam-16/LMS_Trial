@@ -20,6 +20,7 @@ import AdminBatches from "@/pages/admin/batches";
 import AdminBatchDetails from "@/pages/admin/batch-details";
 import AdminReports from "@/pages/admin/reports";
 import AdminProfile from "@/pages/admin/profile";
+import AdminGrading from "@/pages/admin/grading";
 
 // Student Pages
 import StudentDashboard from "@/pages/student/dashboard";
@@ -29,6 +30,7 @@ import StudentUpcomingExams from "@/pages/student/upcoming-exams";
 import StudentResults from "@/pages/student/results";
 import StudentProfile from "@/pages/student/profile";
 import StudentAIAssistant from "@/pages/student/ai-assistant";
+import StudentExamResults from "@/pages/student/exam-results";
 
 function Router() {
   return (
@@ -47,6 +49,7 @@ function Router() {
       <ProtectedRoute path="/admin/batches" component={AdminBatches} roles={["admin", "superadmin"]} />
       <ProtectedRoute path="/admin/batches/:id" component={AdminBatchDetails} roles={["admin", "superadmin"]} />
       <ProtectedRoute path="/admin/reports" component={AdminReports} roles={["admin", "superadmin"]} />
+      <ProtectedRoute path="/admin/grading" component={AdminGrading} roles={["admin", "superadmin"]} />
       <ProtectedRoute path="/admin/profile" component={AdminProfile} roles={["admin", "superadmin"]} />
 
       {/* Student Routes */}

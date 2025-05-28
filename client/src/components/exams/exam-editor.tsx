@@ -17,6 +17,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { 
   Edit, 
   Trash, 
@@ -35,20 +36,16 @@ const examSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().min(1, "Description is required"),
   courseId: z.string().min(1, "Please select a course"),
-  duration: z.number().min(1, "Duration must be at least 1 minute"),
-  maxAttempts: z.number().min(1, "Maximum attempts must be at least 1"),
-  startTime: z.string().optional(),
-  endTime: z.string().optional(),
+  acceptingResponses: z.boolean().default(true),
 });
 
 type ExamFormValues = z.infer<typeof examSchema>;
 
-// Question type
+// Question type - Updated for text-based assignment questions
 type QuestionType = {
   id: number;
   text: string;
-  options: string[];
-  correctOption: number;
+  order: number;
 };
 
 type ExamEditorProps = {
@@ -60,10 +57,7 @@ type ExamEditorProps = {
     title?: string;
     description?: string;
     courseId?: number;
-    duration?: number;
-    maxAttempts?: number;
-    startTime?: string;
-    endTime?: string;
+    acceptingResponses?: boolean;
   };
 };
 
@@ -97,27 +91,11 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
   // Update exam data when fetched exam changes
   useEffect(() => {
     if (fetchedExam && exam?.id) {
-      // Format datetime values for HTML datetime-local input
-      const formatDateTimeForInput = (dateTimeStr: string | undefined) => {
-        if (!dateTimeStr) return "";
-        try {
-          const date = new Date(dateTimeStr);
-          // Format as YYYY-MM-DDThh:mm
-          return date.toISOString().slice(0, 16);
-        } catch (e) {
-          console.error("Failed to parse date:", e);
-          return "";
-        }
-      };
-      
       setExamData({
         title: fetchedExam.title,
         description: fetchedExam.description,
         courseId: String(fetchedExam.courseId),
-        duration: fetchedExam.duration,
-        maxAttempts: fetchedExam.maxAttempts,
-        startTime: formatDateTimeForInput(fetchedExam.startTime),
-        endTime: formatDateTimeForInput(fetchedExam.endTime)
+        acceptingResponses: fetchedExam.acceptingResponses === true // only true if explicitly set to true
       });
     } else if (!exam?.id) {
       setExamData(null);
@@ -133,16 +111,13 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
     }
   }, [examQuestions, exam?.id]);
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<ExamFormValues>({
+  const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<ExamFormValues>({
     resolver: zodResolver(examSchema),
     defaultValues: {
       title: "",
       description: "",
       courseId: "",
-      duration: 60,
-      maxAttempts: 1,
-      startTime: "",
-      endTime: "",
+      acceptingResponses: true,
     }
   });
   
@@ -155,22 +130,17 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
         title: "",
         description: "",
         courseId: "",
-        duration: 60,
-        maxAttempts: 1,
-        startTime: "",
-        endTime: "",
+        acceptingResponses: true,
       });
     }
   }, [examData, exam?.id, reset]);
 
   const onSubmit = async (data: ExamFormValues) => {
     try {
-      // Convert courseId to number and make sure dates are properly formatted
+      // Convert courseId to number
       const payload = {
         ...data,
-        courseId: parseInt(data.courseId),
-        startTime: data.startTime || undefined,
-        endTime: data.endTime || undefined
+        courseId: parseInt(data.courseId)
       };
 
       let examId;
@@ -201,11 +171,10 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
           await apiRequest("DELETE", `/api/exams/${examId}/questions`);
           
           // Add all questions
-          for (const [index, question] of questions.entries()) {
+          for (let index = 0; index < questions.length; index++) {
+            const question = questions[index];
             await apiRequest("POST", `/api/exams/${examId}/questions`, {
               text: question.text,
-              options: question.options,
-              correctOption: question.correctOption,
               order: index,
               examId
             });
@@ -240,8 +209,7 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
     setQuestions([...questions, {
       id: newQuestionId,
       text: "",
-      options: ["", "", "", ""],
-      correctOption: 0
+      order: questions.length
     }]);
   };
 
@@ -253,44 +221,20 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
     ));
   };
 
-  const updateOptionText = (questionId: number, optionIndex: number, text: string) => {
-    setQuestions(questions.map(question => {
-      if (question.id === questionId) {
-        const newOptions = [...question.options];
-        newOptions[optionIndex] = text;
-        return { ...question, options: newOptions };
-      }
-      return question;
-    }));
-  };
-
-  const updateCorrectOption = (questionId: number, optionIndex: number) => {
-    setQuestions(questions.map(question => 
-      question.id === questionId 
-        ? { ...question, correctOption: optionIndex } 
-        : question
-    ));
-  };
+  // No need for option text and correct option methods since we're using text-based questions
 
   const removeQuestion = (questionId: number) => {
     setQuestions(questions.filter(question => question.id !== questionId));
   };
 
-  const addOption = (questionId: number) => {
-    setQuestions(questions.map(question => {
-      if (question.id === questionId) {
-        return { ...question, options: [...question.options, ""] };
-      }
-      return question;
-    }));
-  };
+  // No longer needed for assignment-style text-based exams
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-heading font-semibold">
-            {exam?.id ? "Edit MCQ Exam" : "Create New MCQ Exam"}
+            {exam?.id ? "Edit Assignment Exam" : "Create New Assignment Exam"}
           </DialogTitle>
         </DialogHeader>
         
@@ -319,23 +263,16 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
               
               <div>
                 <Label htmlFor="courseId">Associated Course</Label>
-                <Select 
-                  value={examData?.courseId || ""}
-                  onValueChange={(value) => {
-                    const event = { target: { value, name: "courseId" } };
-                    // @ts-ignore
-                    register("courseId").onChange(event);
-                  }}
+                <select
+                  id="courseId"
+                  className="w-full mt-1 p-2 border border-input rounded-md bg-background"
+                  {...register("courseId")}
                 >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select Course" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {courses.map(course => (
-                      <SelectItem key={course.id} value={String(course.id)}>{course.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="">Select Course</option>
+                  {courses.map(course => (
+                    <option key={course.id} value={String(course.id)}>{course.title}</option>
+                  ))}
+                </select>
                 {errors.courseId && (
                   <p className="text-red-500 text-sm mt-1">{errors.courseId.message}</p>
                 )}
@@ -355,52 +292,20 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
                 )}
               </div>
               
-              <div>
-                <Label htmlFor="duration">Duration (minutes)</Label>
-                <Input 
-                  id="duration"
-                  type="number"
-                  min={1}
-                  {...register("duration", { valueAsNumber: true })}
-                  className="mt-1"
-                />
-                {errors.duration && (
-                  <p className="text-red-500 text-sm mt-1">{errors.duration.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <Label htmlFor="maxAttempts">Maximum Attempts</Label>
-                <Input 
-                  id="maxAttempts"
-                  type="number"
-                  min={1}
-                  {...register("maxAttempts", { valueAsNumber: true })}
-                  className="mt-1"
-                />
-                {errors.maxAttempts && (
-                  <p className="text-red-500 text-sm mt-1">{errors.maxAttempts.message}</p>
-                )}
-              </div>
-              
-              <div>
-                <Label htmlFor="startTime">Start Date & Time</Label>
-                <Input 
-                  id="startTime"
-                  type="datetime-local"
-                  {...register("startTime")}
-                  className="mt-1"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="endTime">End Date & Time</Label>
-                <Input 
-                  id="endTime"
-                  type="datetime-local"
-                  {...register("endTime")}
-                  className="mt-1"
-                />
+
+              <div className="md:col-span-2">
+                <div className="flex items-center space-x-2">
+                  <Switch 
+                    id="acceptingResponses"
+                    checked={watch("acceptingResponses") === true}
+                    onCheckedChange={(checked) => {
+                      setValue("acceptingResponses", checked);
+                    }}
+                  />
+                  <Label htmlFor="acceptingResponses" className="cursor-pointer">
+                    Accepting responses (when disabled, students cannot submit answers)
+                  </Label>
+                </div>
               </div>
             </div>
             
@@ -437,37 +342,9 @@ export default function ExamEditor({ open, onOpenChange, courses, exam }: ExamEd
                     />
                   </div>
                   
-                  <div className="space-y-2 mb-3">
-                    <RadioGroup 
-                      defaultValue={String(question.correctOption)} 
-                      onValueChange={(value) => updateCorrectOption(question.id, parseInt(value))}
-                    >
-                      {question.options.map((option, optionIndex) => (
-                        <div key={optionIndex} className="flex items-center">
-                          <RadioGroupItem 
-                            value={String(optionIndex)} 
-                            id={`q${question.id}_opt${optionIndex}`} 
-                            className="mr-2"
-                          />
-                          <Input
-                            value={option}
-                            onChange={(e) => updateOptionText(question.id, optionIndex, e.target.value)}
-                            className="flex-1 p-2 border border-neutral-light rounded-md"
-                          />
-                        </div>
-                      ))}
-                    </RadioGroup>
+                  <div className="text-sm text-muted-foreground mb-3">
+                    This is a text-based question. Students will provide written answers.
                   </div>
-                  
-                  <Button 
-                    type="button" 
-                    variant="link" 
-                    size="sm" 
-                    className="text-primary text-sm hover:underline p-0"
-                    onClick={() => addOption(question.id)}
-                  >
-                    + Add Option
-                  </Button>
                 </div>
               ))}
               

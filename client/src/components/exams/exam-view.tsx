@@ -7,7 +7,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,10 +26,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+// Text-based question type for assignment-style exams
 type ExamQuestion = {
   id: number;
   text: string;
-  options: string[];
   order: number;
 };
 
@@ -41,13 +41,14 @@ type ExamViewProps = {
     title: string;
     description: string;
     duration: number;
+    acceptingResponses?: boolean;
   };
 };
 
 export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
-  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [examAttemptId, setExamAttemptId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,6 +69,17 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
     if (open && exam) {
       const fetchQuestions = async () => {
         try {
+          // Check if exam is still accepting responses
+          if (exam.acceptingResponses === false) {
+            toast({
+              title: 'Exam closed',
+              description: 'This exam is no longer accepting responses.',
+              variant: 'destructive',
+            });
+            onOpenChange(false);
+            return;
+          }
+          
           // First, create an exam attempt
           const attemptResponse = await apiRequest('POST', '/api/exam-attempts', { examId: exam.id });
           const attemptData = await attemptResponse.json();
@@ -82,9 +94,9 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
           setQuestions(sortedQuestions);
           
           // Initialize answers object with empty values
-          const initialAnswers: Record<number, number> = {};
+          const initialAnswers: Record<number, string> = {};
           sortedQuestions.forEach((q: ExamQuestion) => {
-            initialAnswers[q.id] = -1; // -1 means no answer selected
+            initialAnswers[q.id] = ''; // Empty string for text answers
           });
           setAnswers(initialAnswers);
           
@@ -138,11 +150,21 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
     return () => clearInterval(timer);
   }, [open, exam, isLoading, timeRemaining]);
 
-  // Handle answer selection
-  const handleAnswerChange = (questionId: number, optionIndex: number) => {
+  // Handle text answer change
+  const handleAnswerChange = (questionId: number, answerText: string) => {
+    // Check if exam is still accepting responses before allowing edits
+    if (exam && exam.acceptingResponses === false) {
+      toast({
+        title: 'Edit blocked',
+        description: 'This exam is no longer accepting responses. You cannot modify your answers.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setAnswers((prev) => ({
       ...prev,
-      [questionId]: optionIndex,
+      [questionId]: answerText,
     }));
   };
 
@@ -168,13 +190,13 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
     });
   };
 
-  // Clear selected answer
+  // Clear answer text
   const handleClearSelection = () => {
     const currentQuestion = questions[currentQuestionIndex];
     if (currentQuestion) {
       setAnswers((prev) => ({
         ...prev,
-        [currentQuestion.id]: -1,
+        [currentQuestion.id]: '',
       }));
     }
   };
@@ -183,13 +205,23 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
   const handleSubmitExam = async () => {
     if (!examAttemptId || !exam) return;
     
+    // Check if exam is still accepting responses before submission
+    if (exam.acceptingResponses === false) {
+      toast({
+        title: 'Submission blocked',
+        description: 'This exam is no longer accepting responses. Your answers cannot be submitted.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
     
     try {
-      // Submit answers
+      // Submit answers - make sure answers is properly formatted as JSON
       await apiRequest('PUT', `/api/exam-attempts/${examAttemptId}`, {
         completedAt: new Date().toISOString(),
-        answers,
+        answers: JSON.stringify(answers),
       });
       
       // Close the exam dialog
@@ -218,7 +250,7 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
 
   // Check if all questions have been answered
   const allQuestionsAnswered = () => {
-    return Object.values(answers).every((answer) => answer !== -1);
+    return Object.values(answers).every((answer) => answer.trim() !== '');
   };
 
   // Get current question
@@ -263,7 +295,7 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
                         className={`px-4 py-2 ${index === currentQuestionIndex ? 'text-primary border-b-2 border-primary font-medium' : 'text-neutral-medium hover:text-neutral-dark'}`}
                       >
                         Question {index + 1}
-                        {answers[q.id] !== -1 && (
+                        {answers[q.id]?.trim() !== '' && (
                           <Badge className="ml-2 bg-green-100 text-green-800 h-2 w-2 p-0 rounded-full" />
                         )}
                       </TabsTrigger>
@@ -276,29 +308,26 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
                 <div className="mb-8">
                   <h4 className="text-lg font-medium mb-4">{currentQuestion.text}</h4>
                   
-                  <RadioGroup 
-                    value={String(answers[currentQuestion.id])} 
-                    onValueChange={(value) => handleAnswerChange(currentQuestion.id, parseInt(value))}
-                    className="space-y-3"
-                  >
-                    {currentQuestion.options.map((option, index) => (
-                      <Card key={index} className={`hover:bg-neutral-lightest ${answers[currentQuestion.id] === index ? 'border-primary' : ''}`}>
-                        <CardContent className="p-0">
-                          <Label
-                            htmlFor={`q${currentQuestion.id}_option${index}`}
-                            className="flex items-center p-3 w-full cursor-pointer"
-                          >
-                            <RadioGroupItem 
-                              value={String(index)} 
-                              id={`q${currentQuestion.id}_option${index}`}
-                              className="mr-3" 
-                            />
-                            <span>{option}</span>
-                          </Label>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </RadioGroup>
+                  <div className="space-y-3">
+                    <Card className={`hover:bg-neutral-lightest ${answers[currentQuestion.id]?.trim() !== '' ? 'border-primary' : ''}`}>
+                      <CardContent className="p-4">
+                        <Label
+                          htmlFor={`answer_${currentQuestion.id}`}
+                          className="mb-2 block font-medium"
+                        >
+                          Your Answer:
+                        </Label>
+                        <Textarea 
+                          id={`answer_${currentQuestion.id}`}
+                          value={answers[currentQuestion.id] || ''}
+                          onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
+                          placeholder={exam && exam.acceptingResponses === false ? "Exam is no longer accepting responses" : "Type your answer here..."}
+                          className="min-h-[150px] w-full p-3"
+                          disabled={exam && exam.acceptingResponses === false}
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               )}
               
@@ -318,10 +347,10 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
                   <Button 
                     variant="outline" 
                     onClick={handleClearSelection}
-                    disabled={answers[currentQuestion?.id] === -1}
+                    disabled={!answers[currentQuestion?.id] || answers[currentQuestion?.id] === ''}
                     className="text-warning border-warning hover:bg-warning hover:text-white"
                   >
-                    Clear Selection
+                    Clear Answer
                   </Button>
                 </div>
                 
@@ -333,8 +362,9 @@ export default function ExamView({ open, onOpenChange, exam }: ExamViewProps) {
                   <Button 
                     onClick={() => setIsSubmitDialogOpen(true)}
                     className="bg-primary text-white"
+                    disabled={exam && exam.acceptingResponses === false}
                   >
-                    Submit Exam
+                    {exam && exam.acceptingResponses === false ? 'Exam Closed' : 'Submit Exam'}
                   </Button>
                 )}
               </DialogFooter>

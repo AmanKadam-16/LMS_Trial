@@ -434,19 +434,9 @@ export default function StudentCourseDetails() {
                               onClick={() => markLessonComplete(activeLesson.id)}
                               variant="outline"
                               className="gap-2"
-                              disabled={updateProgressMutation.isPending}
                             >
-                              {updateProgressMutation.isPending ? (
-                                <>
-                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                                  Saving...
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  Mark as Complete
-                                </>
-                              )}
+                              <CheckCircle2 className="h-4 w-4" />
+                              Mark as Complete
                             </Button>
                             
                             <Button
