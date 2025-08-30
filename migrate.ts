@@ -1,11 +1,13 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import { migrate } from 'drizzle-orm/neon-serverless/migrator';
+// migrate.ts - AFTER
+import { Pool } from 'pg'; // Changed import
+import { drizzle } from 'drizzle-orm/node-postgres'; // Changed import
+// The 'migrate' function is no longer used in this custom script
 import * as schema from './shared/schema';
-import ws from 'ws';
+import 'dotenv/config';
+// The 'ws' import is no longer needed
 
 // Required for Neon serverless
-neonConfig.webSocketConstructor = ws;
+// neonConfig.webSocketConstructor = ws;
 
 async function main() {
   console.log('Starting migration...');
